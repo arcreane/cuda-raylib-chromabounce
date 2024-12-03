@@ -10,7 +10,7 @@
 // Structure pour représenter une particule
 struct Particle {
     float x, y;     // Position 2D
-    float vx, vy;   // Vitesse
+    float vx, vy;   // Vitesse des particules
     int r, g, b;    // Couleurs RGB
 };
 
