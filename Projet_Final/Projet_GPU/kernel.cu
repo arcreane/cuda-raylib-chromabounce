@@ -1,39 +1,45 @@
 ﻿#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+#include <curand_kernel.h>  // Pour les nombres aléatoires sur GPU
+#include <raylib.h>
+#include <cmath>  // Pour sqrtf
 #include <iostream>
-#include <cmath>  // Pour sqrt et pow
-#include <raylib.h> // Bibliothèque Raylib
 
 // Structure pour représenter une particule
 struct Particle {
     float x, y;     // Position
     float vx, vy;   // Vitesse
-    int color;      // Couleur
+    int r, g, b;    // Couleurs RGB
 };
 
 // Constantes globales
-const int numParticles = 1000;
-const float timeStep = 0.01f;
-const float interactionRadius = 10.0f;
-const float forceStrength = 0.1f;
+const int numParticles = 500;       // Réduction du nombre de particules pour la fluidité
+const float timeStep = 0.2f;        // Augmentation drastique du pas de temps
+const float interactionRadius = 10.0f; // Rayon réduit pour des calculs plus rapides
+const float forceStrength = 0.5f;   // Force augmentée pour un mouvement plus dynamique
 const int screenWidth = 800;
 const int screenHeight = 600;
 
 // Kernel CUDA pour initialiser les particules
-__global__ void initParticlesKernel(Particle* particles, int numParticles) {
+__global__ void initParticlesKernel(Particle* particles, int numParticles, int screenWidth, int screenHeight, unsigned long long seed) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numParticles) {
-        particles[idx].x = idx % 100;       // Position X
-        particles[idx].y = idx / 100;       // Position Y
-        particles[idx].vx = 0.0f;           // Vitesse X
-        particles[idx].vy = 0.0f;           // Vitesse Y
-        particles[idx].color = idx % 256;   // Couleur
+        curandState state;
+        curand_init(seed, idx, 0, &state);
+
+        particles[idx].x = curand_uniform(&state) * screenWidth;
+        particles[idx].y = curand_uniform(&state) * screenHeight;
+        particles[idx].vx = curand_uniform(&state) * 2.0f - 1.0f; // Vitesse initiale aléatoire (-1 à 1)
+        particles[idx].vy = curand_uniform(&state) * 2.0f - 1.0f;
+        particles[idx].r = (int)(curand_uniform(&state) * 256);
+        particles[idx].g = (int)(curand_uniform(&state) * 256);
+        particles[idx].b = (int)(curand_uniform(&state) * 256);
     }
 }
 
 // Kernel CUDA pour mettre à jour les particules
-__global__ void updateParticlesKernel(Particle* particles, int numParticles) {
+__global__ void updateParticlesKernel(Particle* particles, int numParticles, float interactionRadius, float forceStrength, float timeStep, int screenWidth, int screenHeight) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= numParticles) return;
 
@@ -58,14 +64,19 @@ __global__ void updateParticlesKernel(Particle* particles, int numParticles) {
 
     particles[idx].x += particles[idx].vx * timeStep;
     particles[idx].y += particles[idx].vy * timeStep;
+
+    if (particles[idx].x < 0 || particles[idx].x > screenWidth) particles[idx].vx *= -1.0f;
+    if (particles[idx].y < 0 || particles[idx].y > screenHeight) particles[idx].vy *= -1.0f;
+
+    particles[idx].x = fminf(fmaxf(particles[idx].x, 0.0f), screenWidth);
+    particles[idx].y = fminf(fmaxf(particles[idx].y, 0.0f), screenHeight);
 }
 
 int main() {
     // Initialisation de Raylib
-    InitWindow(screenWidth, screenHeight, "Simulation de Particules");
+    InitWindow(screenWidth, screenHeight, "Simulation de Particules - Très Rapide");
     SetTargetFPS(60);
 
-    // Initialisation des particules
     Particle* h_particles = new Particle[numParticles];
     Particle* d_particles;
     cudaMalloc(&d_particles, numParticles * sizeof(Particle));
@@ -73,23 +84,22 @@ int main() {
     int threadsPerBlock = 256;
     int blocksPerGrid = (numParticles + threadsPerBlock - 1) / threadsPerBlock;
 
-    initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles);
+    unsigned long long seed = static_cast<unsigned long long>(time(nullptr));
+
+    initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, screenWidth, screenHeight, seed);
     cudaDeviceSynchronize();
 
     while (!WindowShouldClose()) {
-        // Mise à jour des particules avec CUDA
-        updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles);
+        updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, interactionRadius, forceStrength, timeStep, screenWidth, screenHeight);
         cudaDeviceSynchronize();
 
-        // Copier les particules sur le CPU pour affichage
         cudaMemcpy(h_particles, d_particles, numParticles * sizeof(Particle), cudaMemcpyDeviceToHost);
 
-        // Rendu graphique
         BeginDrawing();
         ClearBackground(BLACK);
 
         for (int i = 0; i < numParticles; ++i) {
-            Color particleColor = { h_particles[i].color, 50, 200, 255 };
+            Color particleColor = { (unsigned char)h_particles[i].r, (unsigned char)h_particles[i].g, (unsigned char)h_particles[i].b, 255 };
             DrawCircle(h_particles[i].x, h_particles[i].y, 2, particleColor);
         }
 
@@ -97,7 +107,6 @@ int main() {
         EndDrawing();
     }
 
-    // Libération de la mémoire
     delete[] h_particles;
     cudaFree(d_particles);
     CloseWindow();
