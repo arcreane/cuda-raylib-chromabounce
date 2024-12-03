@@ -1,121 +1,106 @@
-﻿
-#include "cuda_runtime.h"
+﻿#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
-#include <stdio.h>
+#include <iostream>
+#include <cmath>  // Pour sqrt et pow
+#include <raylib.h> // Bibliothèque Raylib
 
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+// Structure pour représenter une particule
+struct Particle {
+    float x, y;     // Position
+    float vx, vy;   // Vitesse
+    int color;      // Couleur
+};
 
-__global__ void addKernel(int *c, const int *a, const int *b)
-{
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
+// Constantes globales
+const int numParticles = 1000;
+const float timeStep = 0.01f;
+const float interactionRadius = 10.0f;
+const float forceStrength = 0.1f;
+const int screenWidth = 800;
+const int screenHeight = 600;
+
+// Kernel CUDA pour initialiser les particules
+__global__ void initParticlesKernel(Particle* particles, int numParticles) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numParticles) {
+        particles[idx].x = idx % 100;       // Position X
+        particles[idx].y = idx / 100;       // Position Y
+        particles[idx].vx = 0.0f;           // Vitesse X
+        particles[idx].vy = 0.0f;           // Vitesse Y
+        particles[idx].color = idx % 256;   // Couleur
+    }
 }
 
-int main()
-{
-    const int arraySize = 5;
-    const int a[arraySize] = { 1, 2, 3, 4, 5 };
-    const int b[arraySize] = { 10, 20, 30, 40, 50 };
-    int c[arraySize] = { 0 };
+// Kernel CUDA pour mettre à jour les particules
+__global__ void updateParticlesKernel(Particle* particles, int numParticles) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= numParticles) return;
 
-    // Add vectors in parallel.
-    cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addWithCuda failed!");
-        return 1;
+    float fx = 0.0f, fy = 0.0f;
+
+    for (int j = 0; j < numParticles; ++j) {
+        if (j == idx) continue;
+
+        float dx = particles[j].x - particles[idx].x;
+        float dy = particles[j].y - particles[idx].y;
+        float distance = sqrtf(dx * dx + dy * dy);
+
+        if (distance < interactionRadius && distance > 0.0f) {
+            float force = forceStrength / distance;
+            fx += force * dx;
+            fy += force * dy;
+        }
     }
 
-    printf("{1,2,3,4,5} + {10,20,30,40,50} = {%d,%d,%d,%d,%d}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    particles[idx].vx += fx * timeStep;
+    particles[idx].vy += fy * timeStep;
 
-    // cudaDeviceReset must be called before exiting in order for profiling and
-    // tracing tools such as Nsight and Visual Profiler to show complete traces.
-    cudaStatus = cudaDeviceReset();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceReset failed!");
-        return 1;
+    particles[idx].x += particles[idx].vx * timeStep;
+    particles[idx].y += particles[idx].vy * timeStep;
+}
+
+int main() {
+    // Initialisation de Raylib
+    InitWindow(screenWidth, screenHeight, "Simulation de Particules");
+    SetTargetFPS(60);
+
+    // Initialisation des particules
+    Particle* h_particles = new Particle[numParticles];
+    Particle* d_particles;
+    cudaMalloc(&d_particles, numParticles * sizeof(Particle));
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (numParticles + threadsPerBlock - 1) / threadsPerBlock;
+
+    initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles);
+    cudaDeviceSynchronize();
+
+    while (!WindowShouldClose()) {
+        // Mise à jour des particules avec CUDA
+        updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles);
+        cudaDeviceSynchronize();
+
+        // Copier les particules sur le CPU pour affichage
+        cudaMemcpy(h_particles, d_particles, numParticles * sizeof(Particle), cudaMemcpyDeviceToHost);
+
+        // Rendu graphique
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        for (int i = 0; i < numParticles; ++i) {
+            Color particleColor = { h_particles[i].color, 50, 200, 255 };
+            DrawCircle(h_particles[i].x, h_particles[i].y, 2, particleColor);
+        }
+
+        DrawText("Appuyez sur ESC pour quitter.", 10, 10, 20, WHITE);
+        EndDrawing();
     }
+
+    // Libération de la mémoire
+    delete[] h_particles;
+    cudaFree(d_particles);
+    CloseWindow();
 
     return 0;
-}
-
-// Helper function for using CUDA to add vectors in parallel.
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
-{
-    int *dev_a = 0;
-    int *dev_b = 0;
-    int *dev_c = 0;
-    cudaError_t cudaStatus;
-
-    // Choose which GPU to run on, change this on a multi-GPU system.
-    cudaStatus = cudaSetDevice(0);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-        goto Error;
-    }
-
-    // Allocate GPU buffers for three vectors (two input, one output)    .
-    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
-
-    // Check for any errors launching the kernel
-    cudaStatus = cudaGetLastError();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-        goto Error;
-    }
-    
-    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-    // any errors encountered during the launch.
-    cudaStatus = cudaDeviceSynchronize();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-        goto Error;
-    }
-
-    // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-Error:
-    cudaFree(dev_c);
-    cudaFree(dev_a);
-    cudaFree(dev_b);
-    
-    return cudaStatus;
 }
