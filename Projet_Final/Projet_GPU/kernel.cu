@@ -1,4 +1,5 @@
-﻿#include "cuda_runtime.h"
+// Import des bibliothèques nécessaires
+#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
 #include <curand_kernel.h>  // Pour les nombres aléatoires sur GPU
@@ -8,13 +9,13 @@
 
 // Structure pour représenter une particule
 struct Particle {
-    float x, y;     // Position
-    float vx, vy;   // Vitesse
+    float x, y;     // Position 2D
+    float vx, vy;   // Vitesse des particules
     int r, g, b;    // Couleurs RGB
 };
 
 // Constantes globales
-const int numParticles = 1000;
+const int numParticles = 1000; // Nombre de particules
 const float timeStep = 0.01f;
 const float interactionRadius = 10.0f;
 const float forceStrength = 0.1f;
