@@ -4,6 +4,7 @@
 #include <raylib.h>
 #include <cmath>
 #include <iostream>
+#include <ctime>
 
 // Macro pour vérifier les erreurs CUDA
 #define cudaCheckError(call)                                                        \
@@ -25,12 +26,19 @@ const float timeStep = 0.02f;
 const float interactionRadius = 100.0f;
 const int screenWidth = 1200;
 const int screenHeight = 800;
+const int gameDuration = 45;  // Durée du jeu en secondes
+
+// Zone de marquage
+const int zoneSize = 100;       // Taille du carré bleu
+const int zoneX = screenWidth / 2 - zoneSize / 2;
+const int zoneY = screenHeight / 2 - zoneSize / 2;
 
 // Structure pour représenter une particule
 struct Particle {
     float x, y;     // Position 2D
     float vx, vy;   // Vitesse
     int r, g, b;    // Couleurs RGB
+    bool active;    // Indique si la particule est active
 };
 
 // Kernel CUDA pour initialiser les particules
@@ -47,13 +55,24 @@ __global__ void initParticlesKernel(Particle* particles, int numParticles, int s
         particles[idx].r = (int)(curand_uniform(&state) * 256);
         particles[idx].g = (int)(curand_uniform(&state) * 256);
         particles[idx].b = (int)(curand_uniform(&state) * 256);
+        particles[idx].active = true;
     }
 }
 
 // Kernel CUDA pour mettre à jour les particules
-__global__ void updateParticlesKernel(Particle* particles, int numParticles, float interactionRadius, float timeStep, int screenWidth, int screenHeight, float mouseX, float mouseY, bool isAttracting, bool isRepelling) {
+__global__ void updateParticlesKernel(Particle* particles, int numParticles, float interactionRadius, float timeStep, int screenWidth, int screenHeight, float mouseX, float mouseY, bool isAttracting, bool isRepelling, int* score, int zoneX, int zoneY, int zoneSize) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= numParticles) return;
+
+    if (!particles[idx].active) return; // Particule déjà inactive
+
+    // Vérifie si la particule est dans la zone de marquage
+    if (particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
+        particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize) {
+        atomicAdd(score, 1);           // Augmente le score
+        particles[idx].active = false; // Désactive la particule
+        return;
+    }
 
     float fx = 0.0f, fy = 0.0f;
 
@@ -98,12 +117,16 @@ __global__ void updateParticlesKernel(Particle* particles, int numParticles, flo
 
 int main() {
     // Initialisation de Raylib
-    InitWindow(screenWidth, screenHeight, "Simulation de Particules Gamifiée");
+    InitWindow(screenWidth, screenHeight, "Simulation de Particules Gamifiée avec Zone de Marquage");
     SetTargetFPS(60);
 
     Particle* h_particles = new Particle[numParticles];
     Particle* d_particles;
     cudaCheckError(cudaMalloc(&d_particles, numParticles * sizeof(Particle)));
+
+    int* d_score;
+    cudaCheckError(cudaMalloc(&d_score, sizeof(int)));
+    cudaCheckError(cudaMemset(d_score, 0, sizeof(int)));
 
     int threadsPerBlock = 256;
     int blocksPerGrid = (numParticles + threadsPerBlock - 1) / threadsPerBlock;
@@ -112,30 +135,58 @@ int main() {
     initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, screenWidth, screenHeight, seed);
     cudaCheckError(cudaDeviceSynchronize());
 
+    int score = 0;
+    time_t startTime = time(nullptr);
+
     while (!WindowShouldClose()) {
+        // Chronomètre
+        int elapsedTime = static_cast<int>(time(nullptr) - startTime);
+        if (elapsedTime >= gameDuration) {
+            break; // Fin du jeu après 45 secondes
+        }
+
         Vector2 mousePosition = GetMousePosition();
         bool isAttracting = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
         bool isRepelling = IsMouseButtonDown(MOUSE_RIGHT_BUTTON);
 
-        updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, interactionRadius, timeStep, screenWidth, screenHeight, mousePosition.x, mousePosition.y, isAttracting, isRepelling);
+        updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, interactionRadius, timeStep, screenWidth, screenHeight, mousePosition.x, mousePosition.y, isAttracting, isRepelling, d_score, zoneX, zoneY, zoneSize);
         cudaCheckError(cudaDeviceSynchronize());
 
         cudaCheckError(cudaMemcpy(h_particles, d_particles, numParticles * sizeof(Particle), cudaMemcpyDeviceToHost));
+        cudaCheckError(cudaMemcpy(&score, d_score, sizeof(int), cudaMemcpyDeviceToHost));
 
         BeginDrawing();
         ClearBackground(BLACK);
 
+        // Dessiner la zone de marquage
+        DrawRectangle(zoneX, zoneY, zoneSize, zoneSize, BLUE);
+
+        // Dessiner les particules actives
         for (int i = 0; i < numParticles; ++i) {
-            Color particleColor = { (unsigned char)h_particles[i].r, (unsigned char)h_particles[i].g, (unsigned char)h_particles[i].b, 255 };
-            DrawCircle(h_particles[i].x, h_particles[i].y, 2, particleColor);
+            if (h_particles[i].active) {
+                Color particleColor = { (unsigned char)h_particles[i].r, (unsigned char)h_particles[i].g, (unsigned char)h_particles[i].b, 255 };
+                DrawCircle(h_particles[i].x, h_particles[i].y, 2, particleColor);
+            }
         }
 
-        DrawText("Appuyez sur ESC pour quitter.", 10, 10, 20, WHITE);
+        DrawText(TextFormat("Score: %d", score), 10, 10, 20, WHITE);
+        DrawText(TextFormat("Time: %d/%d seconds", elapsedTime, gameDuration), 10, 40, 20, WHITE);
+        EndDrawing();
+    }
+
+    // Afficher le score final
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(BLACK);
+        DrawText("FIN DU JEU", screenWidth / 2 - 100, screenHeight / 2 - 50, 40, WHITE);
+        DrawText(TextFormat("Votre score: %d", score), screenWidth / 2 - 100, screenHeight / 2, 30, WHITE);
+        DrawText("Appuyez sur ESC pour quitter.", screenWidth / 2 - 150, screenHeight / 2 + 50, 20, WHITE);
         EndDrawing();
     }
 
     delete[] h_particles;
     cudaCheckError(cudaFree(d_particles));
+    cudaCheckError(cudaFree(d_score));
     CloseWindow();
 
     return 0;
