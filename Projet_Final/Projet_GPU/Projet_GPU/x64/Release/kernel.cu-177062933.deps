@@ -92,6 +92,7 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\vector_function
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\vector_functions.hpp
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include\vector_types.h
 C:\Users\33678\Desktop\Cours\GPU\raylib-5.0_win64_msvc16\include\raylib.h
+D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\algorithm
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\atomic
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\cctype
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\cerrno
@@ -129,6 +130,7 @@ D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\stdbo
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\stdexcept
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\stdint.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\streambuf
+D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\string
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\system_error
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\typeinfo
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\type_traits
@@ -141,6 +143,7 @@ D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\vcrun
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\vcruntime_new_debug.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\vcruntime_string.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\vcruntime_typeinfo.h
+D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\vector
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\xatomic.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\xcall_once.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\xerrc.h
@@ -158,7 +161,9 @@ D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\xtr1c
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\xutility
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\yvals.h
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\yvals_core.h
+D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_bit_utils.hpp
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_iter_core.hpp
+D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_minmax.hpp
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_sanitizer_annotate_container.hpp
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_string_view.hpp
 D:\visual_studio\Microsoft Visual Studio\VC\Tools\MSVC\14.41.34120\include\__msvc_system_error_abi.hpp
