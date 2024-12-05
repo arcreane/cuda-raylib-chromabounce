@@ -112,36 +112,33 @@ __global__ void updateParticlesKernel(
     particles[idx].x = fminf(fmaxf(particles[idx].x, 0.0f), screenWidth);
     particles[idx].y = fminf(fmaxf(particles[idx].y, 0.0f), screenHeight);
 
-    // Collisions entre particules dans la zone de marquage
-    if (!particles[idx].interacted && particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
-        particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize) {
+    // Collisions entre particules
+    for (int i = 0; i < numParticles; i++) {
+        if (i == idx || !particles[i].active) continue;
 
-        for (int i = 0; i < numParticles; i++) {
-            if (i == idx || !particles[i].active || particles[i].interacted) continue;
+        float distX = particles[i].x - particles[idx].x;
+        float distY = particles[i].y - particles[idx].y;
+        float dist = sqrtf(distX * distX + distY * distY);
 
-            float distX = particles[i].x - particles[idx].x;
-            float distY = particles[i].y - particles[idx].y;
-            float dist = sqrtf(distX * distX + distY * distY);
+        if (dist < particleSize * 2.0f && dist > 0.0f) {
+            // Inversion des vitesses (collision élastique simplifiée)
+            float normX = distX / dist;
+            float normY = distY / dist;
 
-            if (dist < particleSize * 2.0f && dist > 0.0f) {
-                // Calcul de la direction opposée
-                float normX = distX / dist;
-                float normY = distY / dist;
+            float tempVx = particles[idx].vx;
+            float tempVy = particles[idx].vy;
 
-                // Réduction contrôlée de la vitesse
-                float collisionSpeed = 50.0f;
+            particles[idx].vx = particles[i].vx * 0.8f; // Réduction légère pour éviter accumulation infinie
+            particles[idx].vy = particles[i].vy * 0.8f;
 
-                particles[idx].vx -= normX * collisionSpeed * timeStep;
-                particles[idx].vy -= normY * collisionSpeed * timeStep;
-                particles[i].vx += normX * collisionSpeed * timeStep;
-                particles[i].vy += normY * collisionSpeed * timeStep;
+            particles[i].vx = tempVx * 0.8f;
+            particles[i].vy = tempVy * 0.8f;
 
-                // Légère séparation pour éviter un chevauchement continu
-                particles[idx].x -= normX * particleSize * 0.5f;
-                particles[idx].y -= normY * particleSize * 0.5f;
-                particles[i].x += normX * particleSize * 0.5f;
-                particles[i].y += normY * particleSize * 0.5f;
-            }
+            // Légère séparation pour éviter un chevauchement continu
+            particles[idx].x -= normX * particleSize * 0.5f;
+            particles[idx].y -= normY * particleSize * 0.5f;
+            particles[i].x += normX * particleSize * 0.5f;
+            particles[i].y += normY * particleSize * 0.5f;
         }
     }
 
@@ -153,7 +150,6 @@ __global__ void updateParticlesKernel(
         particles[idx].active = false; // Désactive la particule
     }
 }
-
 // Menu principal pour sélectionner la difficulté
 std::string showMenu() {
     while (!WindowShouldClose()) {
