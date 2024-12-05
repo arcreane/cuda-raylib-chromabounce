@@ -112,6 +112,39 @@ __global__ void updateParticlesKernel(
     particles[idx].x = fminf(fmaxf(particles[idx].x, 0.0f), screenWidth);
     particles[idx].y = fminf(fmaxf(particles[idx].y, 0.0f), screenHeight);
 
+    // Collisions entre particules dans la zone de marquage
+    if (!particles[idx].interacted && particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
+        particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize) {
+
+        for (int i = 0; i < numParticles; i++) {
+            if (i == idx || !particles[i].active || particles[i].interacted) continue;
+
+            float distX = particles[i].x - particles[idx].x;
+            float distY = particles[i].y - particles[idx].y;
+            float dist = sqrtf(distX * distX + distY * distY);
+
+            if (dist < particleSize * 2.0f && dist > 0.0f) {
+                // Calcul de la direction opposée
+                float normX = distX / dist;
+                float normY = distY / dist;
+
+                // Réduction contrôlée de la vitesse
+                float collisionSpeed = 50.0f;
+
+                particles[idx].vx -= normX * collisionSpeed * timeStep;
+                particles[idx].vy -= normY * collisionSpeed * timeStep;
+                particles[i].vx += normX * collisionSpeed * timeStep;
+                particles[i].vy += normY * collisionSpeed * timeStep;
+
+                // Légère séparation pour éviter un chevauchement continu
+                particles[idx].x -= normX * particleSize * 0.5f;
+                particles[idx].y -= normY * particleSize * 0.5f;
+                particles[i].x += normX * particleSize * 0.5f;
+                particles[i].y += normY * particleSize * 0.5f;
+            }
+        }
+    }
+
     // Vérifie si la particule est dans la zone d'embut et a été affectée par la souris
     if (particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
         particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize &&
@@ -140,27 +173,31 @@ std::string showMenu() {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             Vector2 mousePos = GetMousePosition();
             if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 150), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 50; // Collisions activées
-                particleSpeed = 200.0f;
-                zoneSize = 150;
+                numParticles = 50;         // Moins de particules
+                particleSpeed = 200.0f;   // Vitesse plus élevée
+                zoneSize = 150;           // Zone plus grande
+                particleSize = 10.0f;     // Particules grandes
                 return "Facile";
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 50), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 200;
-                particleSpeed = 100.0f;
-                zoneSize = 80;
+                numParticles = 200;       // Nombre moyen de particules
+                particleSpeed = 100.0f;   // Vitesse modérée
+                zoneSize = 80;            // Zone modérée
+                particleSize = 5.0f;      // Particules de taille normale
                 return "Moyen";
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 + 50), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 500;
-                particleSpeed = 25.0f;
-                zoneSize = 20;
+                numParticles = 500;       // Beaucoup de particules
+                particleSpeed = 25.0f;    // Vitesse réduite
+                zoneSize = 20;            // Zone petite
+                particleSize = 2.0f;      // Particules petites
                 return "Difficile";
             }
         }
     }
     return "";
 }
+
 
 // Fonction pour demander le pseudo
 std::string getPlayerName() {
