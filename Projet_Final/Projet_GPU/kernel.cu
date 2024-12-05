@@ -152,6 +152,10 @@ int showMenu() {
         if (IsKeyPressed(KEY_ESCAPE)) return -1;
 
         BeginDrawing();
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            CloseWindow();  // Ferme la fenêtre
+            exit(0);        // Termine l'application
+        }
         ClearBackground(BLACK);
 
         DrawText("Choisissez une difficulté:", screenWidth / 2 - 150, screenHeight / 2 - 100, 20, WHITE);
@@ -169,7 +173,7 @@ int showMenu() {
             if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 150), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 500;
                 particleSize = 10.0f;
-                particleSpeed = 50.0f;
+                particleSpeed = 200.0f;
                 zoneSize = 150;
                 return 1;
             }
@@ -183,13 +187,47 @@ int showMenu() {
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 + 50), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 1500;
                 particleSize = 1.0f;
-                particleSpeed = 200.0f;
+                particleSpeed = 25.0f;
                 zoneSize = 50;
                 return 3;
             }
         }
     }
-    return -1;
+
+}
+
+// Fonction pour saisir le pseudonyme
+std::string getPlayerName() {
+    char nameBuffer[20] = { 0 };
+    int letterCount = 0;
+
+    while (!IsKeyPressed(KEY_ENTER)) {
+        BeginDrawing();
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            CloseWindow();  // Ferme la fenêtre
+            exit(0);        // Termine l'application
+        }
+        ClearBackground(BLACK);
+
+        DrawText("Entrez votre pseudonyme:", screenWidth / 2 - 200, screenHeight / 2 - 50, 20, WHITE);
+        DrawText(nameBuffer, screenWidth / 2 - 100, screenHeight / 2, 20, WHITE);
+
+        EndDrawing();
+
+        int key = GetCharPressed();
+        if ((key >= 32) && (key <= 125) && (letterCount < 20)) {
+            nameBuffer[letterCount] = (char)key;
+            nameBuffer[letterCount + 1] = '\0';
+            letterCount++;
+        }
+        if (IsKeyPressed(KEY_BACKSPACE) && letterCount > 0) {
+            letterCount--;
+            nameBuffer[letterCount] = '\0';
+        }
+    }
+
+    return std::string(nameBuffer);
+
 }
 
 // Fonction principale
@@ -220,11 +258,16 @@ int main() {
         initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, screenWidth, screenHeight, seed);
         cudaCheckError(cudaDeviceSynchronize());
 
+
         int score = 0;
         time_t startTime = time(nullptr);
 
-        while (!WindowShouldClose()) {
-            if (IsKeyPressed(KEY_ESCAPE)) break;
+        while (true) {
+
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();
+                return 0; // Sortir proprement du programme
+            }
 
             int elapsedTime = static_cast<int>(time(nullptr) - startTime);
             if (elapsedTime >= gameDuration) break;
@@ -244,6 +287,10 @@ int main() {
             cudaMemcpy(&score, d_score, sizeof(int), cudaMemcpyDeviceToHost);
 
             BeginDrawing();
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();  // Ferme la fenêtre
+                exit(0);        // Termine l'application
+            }
             ClearBackground(BLACK);
 
             DrawRectangle(screenWidth / 2 - zoneSize / 2, screenHeight / 2 - zoneSize / 2, zoneSize, zoneSize, BLUE);
@@ -267,6 +314,25 @@ int main() {
         highScores.push_back({ "Player", score });
         std::sort(highScores.begin(), highScores.end(), compareScores);
         if (highScores.size() > 6) highScores.resize(6);
+
+        // Étape 4 : Afficher les scores
+        while (!IsKeyPressed(KEY_ENTER)) {
+            BeginDrawing();
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();  // Ferme la fenêtre
+                exit(0);        // Termine l'application
+            }
+
+            ClearBackground(BLACK);
+
+            DrawText("Tableau des Scores", screenWidth / 2 - 100, 50, 30, WHITE);
+            for (int i = 0; i < highScores.size(); i++) {
+                DrawText(TextFormat("%d. %s - %d", i + 1, highScores[i].playerName.c_str(), highScores[i].score), screenWidth / 2 - 200, 100 + i * 30, 20, WHITE);
+            }
+            DrawText("Appuyez sur ENTREE pour revenir au menu principal", screenWidth / 2 - 300, screenHeight - 50, 20, WHITE);
+
+            EndDrawing();
+        }
     }
 
     CloseWindow();
