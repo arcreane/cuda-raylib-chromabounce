@@ -139,7 +139,7 @@ int showMenu() {
             if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 150), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 500;
                 particleSize = 10.0f;
-                particleSpeed = 50.0f;
+                particleSpeed = 200.0f;
                 zoneSize = 150;
                 return 1; // Facile
             }
@@ -153,7 +153,7 @@ int showMenu() {
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 + 50), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 1500;
                 particleSize = 1.0f;
-                particleSpeed = 200.0f;
+                particleSpeed = 25.0f;
                 zoneSize = 50;
                 return 3; // Difficile
             }
