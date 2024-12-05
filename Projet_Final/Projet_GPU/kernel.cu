@@ -30,6 +30,7 @@ struct Particle {
     float vx, vy;
     int r, g, b;
     bool active;
+    bool interacted; // Ajout pour savoir si la particule a été affectée par la souris
 };
 
 // Structure pour stocker un score
@@ -41,8 +42,8 @@ struct Score {
 // Variables globales pour la simulation des particules
 int numParticles = 1000;
 float particleSize = 2.0f;
-float particleSpeed = 100.0f; // Vitesse par défaut
-int zoneSize = 100;          // Taille de la zone par défaut
+float particleSpeed = 100.0f;
+int zoneSize = 100;
 
 // Fonction pour comparer les scores
 bool compareScores(const Score& a, const Score& b) {
@@ -64,21 +65,18 @@ __global__ void initParticlesKernel(Particle* particles, int numParticles, int s
         particles[idx].g = (int)(curand_uniform(&state) * 256);
         particles[idx].b = (int)(curand_uniform(&state) * 256);
         particles[idx].active = true;
+        particles[idx].interacted = false;
     }
 }
 
-// Kernel CUDA pour mettre à jour les particules
-__global__ void updateParticlesKernel(Particle* particles, int numParticles, float particleSpeed, float timeStep, int screenWidth, int screenHeight, int* score, int zoneX, int zoneY, int zoneSize, float mouseX, float mouseY, bool isAttracting, bool isRepelling) {
+// Kernel CUDA pour mettre à jour les particules avec gestion des collisions
+__global__ void updateParticlesKernel(
+    Particle* particles, int numParticles, float particleSize, float particleSpeed, float timeStep,
+    int screenWidth, int screenHeight, int* score, int zoneX, int zoneY, int zoneSize,
+    float mouseX, float mouseY, bool isAttracting, bool isRepelling) {
+
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= numParticles || !particles[idx].active) return;
-
-    // Vérifie si la particule est dans la zone de marquage
-    if (particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
-        particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize) {
-        atomicAdd(score, 1);
-        particles[idx].active = false;
-        return;
-    }
 
     // Interactions avec la souris
     float fx = 0.0f, fy = 0.0f;
@@ -86,8 +84,9 @@ __global__ void updateParticlesKernel(Particle* particles, int numParticles, flo
     float dy = mouseY - particles[idx].y;
     float distance = sqrtf(dx * dx + dy * dy);
 
-    if (distance < 100.0f && distance > 0.0f) { // Rayon d’interaction
-        float force = 10.0f / distance; // Intensité de la force
+    if (distance < 100.0f && distance > 0.0f) {
+        float force = 10.0f / distance;
+        particles[idx].interacted = true; // Marque comme affectée par la souris
         if (isAttracting) {
             fx += force * dx;
             fy += force * dy;
@@ -111,11 +110,48 @@ __global__ void updateParticlesKernel(Particle* particles, int numParticles, flo
 
     particles[idx].x = fminf(fmaxf(particles[idx].x, 0.0f), screenWidth);
     particles[idx].y = fminf(fmaxf(particles[idx].y, 0.0f), screenHeight);
+
+    // Gestion des collisions entre particules
+    for (int i = 0; i < numParticles; i++) {
+        if (i == idx || !particles[i].active) continue;
+
+        float distX = particles[i].x - particles[idx].x;
+        float distY = particles[i].y - particles[idx].y;
+        float dist = sqrtf(distX * distX + distY * distY);
+
+        if (dist < particleSize * 2.0f && dist > 0.0f) {
+            // Calcul de la direction opposée
+            float normX = distX / dist;
+            float normY = distY / dist;
+
+            // Inversion des vitesses
+            particles[idx].vx -= normX * particleSpeed * 0.1f;
+            particles[idx].vy -= normY * particleSpeed * 0.1f;
+            particles[i].vx += normX * particleSpeed * 0.1f;
+            particles[i].vy += normY * particleSpeed * 0.1f;
+
+            // Séparation
+            particles[idx].x -= normX * 0.5f;
+            particles[idx].y -= normY * 0.5f;
+            particles[i].x += normX * 0.5f;
+            particles[i].y += normY * 0.5f;
+        }
+    }
+
+    // Vérifie si la particule est dans la zone d'embut et a été affectée
+    if (particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
+        particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize &&
+        particles[idx].interacted) {
+        atomicAdd(score, 1);
+        particles[idx].active = false;
+    }
 }
 
 // Fonction pour gérer le menu principal
 int showMenu() {
-    while (true) {
+    while (!WindowShouldClose()) {
+        if (IsKeyPressed(KEY_ESCAPE)) return -1;
+
         BeginDrawing();
         ClearBackground(BLACK);
 
@@ -136,53 +172,25 @@ int showMenu() {
                 particleSize = 10.0f;
                 particleSpeed = 50.0f;
                 zoneSize = 150;
-                return 1; // Facile
+                return 1;
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 50), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 1000;
                 particleSize = 4.0f;
                 particleSpeed = 100.0f;
                 zoneSize = 100;
-                return 2; // Moyen
+                return 2;
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 + 50), float(screenHeight / 2), 100, 50 })) {
                 numParticles = 1500;
                 particleSize = 1.0f;
                 particleSpeed = 200.0f;
                 zoneSize = 50;
-                return 3; // Difficile
+                return 3;
             }
         }
     }
-}
-
-// Fonction pour saisir le pseudonyme
-std::string getPlayerName() {
-    char nameBuffer[20] = { 0 };
-    int letterCount = 0;
-
-    while (!IsKeyPressed(KEY_ENTER)) {
-        BeginDrawing();
-        ClearBackground(BLACK);
-
-        DrawText("Entrez votre pseudonyme:", screenWidth / 2 - 200, screenHeight / 2 - 50, 20, WHITE);
-        DrawText(nameBuffer, screenWidth / 2 - 100, screenHeight / 2, 20, WHITE);
-
-        EndDrawing();
-
-        int key = GetCharPressed();
-        if ((key >= 32) && (key <= 125) && (letterCount < 20)) {
-            nameBuffer[letterCount] = (char)key;
-            nameBuffer[letterCount + 1] = '\0';
-            letterCount++;
-        }
-        if (IsKeyPressed(KEY_BACKSPACE) && letterCount > 0) {
-            letterCount--;
-            nameBuffer[letterCount] = '\0';
-        }
-    }
-
-    return std::string(nameBuffer);
+    return -1;
 }
 
 // Fonction principale
@@ -193,13 +201,11 @@ int main() {
     std::vector<Score> highScores;
 
     while (!WindowShouldClose()) {
-        // Étape 1 : Menu principal
+        if (IsKeyPressed(KEY_ESCAPE)) break;
+
         int difficulty = showMenu();
+        if (difficulty == -1) break;
 
-        // Étape 2 : Saisie du pseudonyme
-        std::string playerName = getPlayerName();
-
-        // Étape 3 : Lancer le jeu
         Particle* h_particles = new Particle[numParticles];
         Particle* d_particles;
         cudaCheckError(cudaMalloc(&d_particles, numParticles * sizeof(Particle)));
@@ -218,7 +224,9 @@ int main() {
         int score = 0;
         time_t startTime = time(nullptr);
 
-        while (true) {
+        while (!WindowShouldClose()) {
+            if (IsKeyPressed(KEY_ESCAPE)) break;
+
             int elapsedTime = static_cast<int>(time(nullptr) - startTime);
             if (elapsedTime >= gameDuration) break;
 
@@ -226,7 +234,11 @@ int main() {
             bool isAttracting = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
             bool isRepelling = IsMouseButtonDown(MOUSE_RIGHT_BUTTON);
 
-            updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, particleSpeed, 0.02f, screenWidth, screenHeight, d_score, screenWidth / 2 - zoneSize / 2, screenHeight / 2 - zoneSize / 2, zoneSize, mousePosition.x, mousePosition.y, isAttracting, isRepelling);
+            updateParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (
+                d_particles, numParticles, particleSize, particleSpeed, 0.02f,
+                screenWidth, screenHeight, d_score, screenWidth / 2 - zoneSize / 2,
+                screenHeight / 2 - zoneSize / 2, zoneSize, mousePosition.x, mousePosition.y,
+                isAttracting, isRepelling);
             cudaCheckError(cudaDeviceSynchronize());
 
             cudaMemcpy(h_particles, d_particles, numParticles * sizeof(Particle), cudaMemcpyDeviceToHost);
@@ -253,24 +265,9 @@ int main() {
         cudaFree(d_particles);
         cudaFree(d_score);
 
-        // Ajouter le score au tableau
-        highScores.push_back({ playerName, score });
+        highScores.push_back({ "Player", score });
         std::sort(highScores.begin(), highScores.end(), compareScores);
         if (highScores.size() > 6) highScores.resize(6);
-
-        // Étape 4 : Afficher les scores
-        while (!IsKeyPressed(KEY_ENTER)) {
-            BeginDrawing();
-            ClearBackground(BLACK);
-
-            DrawText("Tableau des Scores", screenWidth / 2 - 100, 50, 30, WHITE);
-            for (int i = 0; i < highScores.size(); i++) {
-                DrawText(TextFormat("%d. %s - %d", i + 1, highScores[i].playerName.c_str(), highScores[i].score), screenWidth / 2 - 200, 100 + i * 30, 20, WHITE);
-            }
-            DrawText("Appuyez sur ENTREE pour revenir au menu principal", screenWidth / 2 - 300, screenHeight - 50, 20, WHITE);
-
-            EndDrawing();
-        }
     }
 
     CloseWindow();
