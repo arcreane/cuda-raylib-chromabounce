@@ -26,20 +26,22 @@ const int gameDuration = 45;  // Durée du jeu en secondes
 
 // Structure pour stocker une particule
 struct Particle {
-    float x, y; // Position 2D
-    float vx, vy; // Vitesse des particules
-    int r, g, b; // Couleurs RGB
-    bool active;
+    float x, y;    // Position
+    float vx, vy;  // Vitesse
+    int r, g, b;   // Couleurs
+    bool active;   // Active/inactive
+    bool interacted; // Si la particule a été affectée par la souris
 };
 
 // Structure pour stocker un score
 struct Score {
     std::string playerName;
+    std::string difficulty;
     int score;
 };
 
 // Variables globales pour la simulation des particules
-int numParticles = 1000;
+int numParticles = 200;
 float particleSize = 2.0f;
 float particleSpeed = 100.0f;
 int zoneSize = 100;
@@ -68,11 +70,11 @@ __global__ void initParticlesKernel(Particle* particles, int numParticles, int s
     }
 }
 
-// Kernel CUDA pour mettre à jour les particules avec gestion des collisions
+// Kernel CUDA pour mettre à jour les particules
 __global__ void updateParticlesKernel(
     Particle* particles, int numParticles, float particleSize, float particleSpeed, float timeStep,
     int screenWidth, int screenHeight, int* score, int zoneX, int zoneY, int zoneSize,
-    float mouseX, float mouseY, bool isAttracting, bool isRepelling) {
+    float mouseX, float mouseY, bool isAttracting, bool isRepelling, bool enableCollisions) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= numParticles || !particles[idx].active) return;
@@ -110,52 +112,19 @@ __global__ void updateParticlesKernel(
     particles[idx].x = fminf(fmaxf(particles[idx].x, 0.0f), screenWidth);
     particles[idx].y = fminf(fmaxf(particles[idx].y, 0.0f), screenHeight);
 
-    // Gestion des collisions entre particules
-    for (int i = 0; i < numParticles; i++) {
-        if (i == idx || !particles[i].active) continue;
-
-        float distX = particles[i].x - particles[idx].x;
-        float distY = particles[i].y - particles[idx].y;
-        float dist = sqrtf(distX * distX + distY * distY);
-
-        if (dist < particleSize * 2.0f && dist > 0.0f) {
-            // Calcul de la direction opposée
-            float normX = distX / dist;
-            float normY = distY / dist;
-
-            // Inversion des vitesses
-            particles[idx].vx -= normX * particleSpeed * 0.1f;
-            particles[idx].vy -= normY * particleSpeed * 0.1f;
-            particles[i].vx += normX * particleSpeed * 0.1f;
-            particles[i].vy += normY * particleSpeed * 0.1f;
-
-            // Séparation
-            particles[idx].x -= normX * 0.5f;
-            particles[idx].y -= normY * 0.5f;
-            particles[i].x += normX * 0.5f;
-            particles[i].y += normY * 0.5f;
-        }
-    }
-
-    // Vérifie si la particule est dans la zone d'embut et a été affectée
+    // Vérifie si la particule est dans la zone d'embut et a été affectée par la souris
     if (particles[idx].x > zoneX && particles[idx].x < zoneX + zoneSize &&
         particles[idx].y > zoneY && particles[idx].y < zoneY + zoneSize &&
         particles[idx].interacted) {
-        atomicAdd(score, 1);
-        particles[idx].active = false;
+        atomicAdd(score, 1); // Augmente le score uniquement si la souris a interagi
+        particles[idx].active = false; // Désactive la particule
     }
 }
 
-// Fonction pour gérer le menu principal
-int showMenu() {
+// Menu principal pour sélectionner la difficulté
+std::string showMenu() {
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_ESCAPE)) return -1;
-
         BeginDrawing();
-        if (IsKeyPressed(KEY_ESCAPE)) {
-            CloseWindow();  // Ferme la fenêtre
-            exit(0);        // Termine l'application
-        }
         ClearBackground(BLACK);
 
         DrawText("Choisissez une difficulté:", screenWidth / 2 - 150, screenHeight / 2 - 100, 20, WHITE);
@@ -171,42 +140,36 @@ int showMenu() {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             Vector2 mousePos = GetMousePosition();
             if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 150), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 500;
-                particleSize = 10.0f;
+                numParticles = 50; // Collisions activées
                 particleSpeed = 200.0f;
                 zoneSize = 150;
-                return 1;
+                return "Facile";
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 - 50), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 1000;
-                particleSize = 4.0f;
+                numParticles = 200;
                 particleSpeed = 100.0f;
-                zoneSize = 100;
-                return 2;
+                zoneSize = 80;
+                return "Moyen";
             }
             else if (CheckCollisionPointRec(mousePos, { float(screenWidth / 2 + 50), float(screenHeight / 2), 100, 50 })) {
-                numParticles = 1500;
-                particleSize = 1.0f;
+                numParticles = 500;
                 particleSpeed = 25.0f;
-                zoneSize = 50;
-                return 3;
+                zoneSize = 20;
+                return "Difficile";
             }
         }
     }
-
+    return "";
 }
 
-// Fonction pour saisir le pseudonyme
+// Fonction pour demander le pseudo
 std::string getPlayerName() {
     char nameBuffer[20] = { 0 };
     int letterCount = 0;
 
     while (!IsKeyPressed(KEY_ENTER)) {
         BeginDrawing();
-        if (IsKeyPressed(KEY_ESCAPE)) {
-            CloseWindow();  // Ferme la fenêtre
-            exit(0);        // Termine l'application
-        }
+        if (IsKeyPressed(KEY_ESCAPE)) exit(0);
         ClearBackground(BLACK);
 
         DrawText("Entrez votre pseudonyme:", screenWidth / 2 - 200, screenHeight / 2 - 50, 20, WHITE);
@@ -227,7 +190,6 @@ std::string getPlayerName() {
     }
 
     return std::string(nameBuffer);
-
 }
 
 // Fonction principale
@@ -238,10 +200,10 @@ int main() {
     std::vector<Score> highScores;
 
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_ESCAPE)) break;
+        std::string difficulty = showMenu();
+        if (difficulty.empty()) break;
 
-        int difficulty = showMenu();
-        if (difficulty == -1) break;
+        std::string playerName = getPlayerName();
 
         Particle* h_particles = new Particle[numParticles];
         Particle* d_particles;
@@ -258,16 +220,11 @@ int main() {
         initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, screenWidth, screenHeight, seed);
         cudaCheckError(cudaDeviceSynchronize());
 
-
         int score = 0;
         time_t startTime = time(nullptr);
 
-        while (true) {
-
-            if (IsKeyPressed(KEY_ESCAPE)) {
-                CloseWindow();
-                return 0; // Sortir proprement du programme
-            }
+        while (!WindowShouldClose()) {
+            if (IsKeyPressed(KEY_ESCAPE)) exit(0);
 
             int elapsedTime = static_cast<int>(time(nullptr) - startTime);
             if (elapsedTime >= gameDuration) break;
@@ -280,17 +237,13 @@ int main() {
                 d_particles, numParticles, particleSize, particleSpeed, 0.02f,
                 screenWidth, screenHeight, d_score, screenWidth / 2 - zoneSize / 2,
                 screenHeight / 2 - zoneSize / 2, zoneSize, mousePosition.x, mousePosition.y,
-                isAttracting, isRepelling);
+                isAttracting, isRepelling, numParticles == 200);
             cudaCheckError(cudaDeviceSynchronize());
 
             cudaMemcpy(h_particles, d_particles, numParticles * sizeof(Particle), cudaMemcpyDeviceToHost);
             cudaMemcpy(&score, d_score, sizeof(int), cudaMemcpyDeviceToHost);
 
             BeginDrawing();
-            if (IsKeyPressed(KEY_ESCAPE)) {
-                CloseWindow();  // Ferme la fenêtre
-                exit(0);        // Termine l'application
-            }
             ClearBackground(BLACK);
 
             DrawRectangle(screenWidth / 2 - zoneSize / 2, screenHeight / 2 - zoneSize / 2, zoneSize, zoneSize, BLUE);
@@ -311,25 +264,31 @@ int main() {
         cudaFree(d_particles);
         cudaFree(d_score);
 
-        highScores.push_back({ "Player", score });
+        highScores.push_back({ playerName + " (" + difficulty + ")", difficulty, score });
         std::sort(highScores.begin(), highScores.end(), compareScores);
         if (highScores.size() > 6) highScores.resize(6);
 
-        // Étape 4 : Afficher les scores
+        // Afficher les scores
         while (!IsKeyPressed(KEY_ENTER)) {
             BeginDrawing();
-            if (IsKeyPressed(KEY_ESCAPE)) {
-                CloseWindow();  // Ferme la fenêtre
-                exit(0);        // Termine l'application
-            }
-
+            if (IsKeyPressed(KEY_ESCAPE)) exit(0);
             ClearBackground(BLACK);
 
             DrawText("Tableau des Scores", screenWidth / 2 - 100, 50, 30, WHITE);
+
+            // Afficher chaque score dans le tableau des scores
             for (int i = 0; i < highScores.size(); i++) {
-                DrawText(TextFormat("%d. %s - %d", i + 1, highScores[i].playerName.c_str(), highScores[i].score), screenWidth / 2 - 200, 100 + i * 30, 20, WHITE);
+                DrawText(TextFormat("%d. %s - %d", i + 1, highScores[i].playerName.c_str(), highScores[i].score),
+                    screenWidth / 2 - 200, 100 + i * 30, 20, WHITE);
             }
-            DrawText("Appuyez sur ENTREE pour revenir au menu principal", screenWidth / 2 - 300, screenHeight - 50, 20, WHITE);
+
+            // Ajouter le texte "GAME OVER" sous le tableau des scores
+            DrawText("GAME OVER",
+                screenWidth / 2 - MeasureText("GAME OVER", 40) / 2,
+                100 + highScores.size() * 30 + 20, 40, RED);
+
+            DrawText("Appuyez sur ENTREE pour revenir au menu principal",
+                screenWidth / 2 - 300, screenHeight - 50, 20, WHITE);
 
             EndDrawing();
         }
