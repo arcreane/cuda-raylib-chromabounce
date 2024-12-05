@@ -26,11 +26,10 @@ const int gameDuration = 45;  // Durée du jeu en secondes
 
 // Structure pour stocker une particule
 struct Particle {
-    float x, y;
-    float vx, vy;
-    int r, g, b;
+    float x, y; // Position 2D
+    float vx, vy; // Vitesse des particules
+    int r, g, b; // Couleurs RGB
     bool active;
-    bool interacted; // Ajout pour savoir si la particule a été affectée par la souris
 };
 
 // Structure pour stocker un score
