@@ -118,6 +118,10 @@ __global__ void updateParticlesKernel(Particle* particles, int numParticles, flo
 int showMenu() {
     while (true) {
         BeginDrawing();
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            CloseWindow();  // Ferme la fenêtre
+            exit(0);        // Termine l'application
+        }
         ClearBackground(BLACK);
 
         DrawText("Choisissez une difficulté:", screenWidth / 2 - 150, screenHeight / 2 - 100, 20, WHITE);
@@ -164,6 +168,10 @@ std::string getPlayerName() {
 
     while (!IsKeyPressed(KEY_ENTER)) {
         BeginDrawing();
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            CloseWindow();  // Ferme la fenêtre
+            exit(0);        // Termine l'application
+        }
         ClearBackground(BLACK);
 
         DrawText("Entrez votre pseudonyme:", screenWidth / 2 - 200, screenHeight / 2 - 50, 20, WHITE);
@@ -216,10 +224,18 @@ int main() {
         initParticlesKernel << <blocksPerGrid, threadsPerBlock >> > (d_particles, numParticles, screenWidth, screenHeight, seed);
         cudaCheckError(cudaDeviceSynchronize());
 
+
         int score = 0;
         time_t startTime = time(nullptr);
 
+
         while (true) {
+
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();
+                return 0; // Sortir proprement du programme
+            }
+
             int elapsedTime = static_cast<int>(time(nullptr) - startTime);
             if (elapsedTime >= gameDuration) break;
 
@@ -234,6 +250,10 @@ int main() {
             cudaMemcpy(&score, d_score, sizeof(int), cudaMemcpyDeviceToHost);
 
             BeginDrawing();
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();  // Ferme la fenêtre
+                exit(0);        // Termine l'application
+            }
             ClearBackground(BLACK);
 
             DrawRectangle(screenWidth / 2 - zoneSize / 2, screenHeight / 2 - zoneSize / 2, zoneSize, zoneSize, BLUE);
@@ -262,6 +282,11 @@ int main() {
         // Étape 4 : Afficher les scores
         while (!IsKeyPressed(KEY_ENTER)) {
             BeginDrawing();
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();  // Ferme la fenêtre
+                exit(0);        // Termine l'application
+            }
+
             ClearBackground(BLACK);
 
             DrawText("Tableau des Scores", screenWidth / 2 - 100, 50, 30, WHITE);
